@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Distributed WS · Redis Streams</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <h1>🔔 Notifications <span id="status" class="offline">offline</span></h1>
+    <div class="controls">
+      <input id="title" value="Deploy finished" />
+      <button id="send">Send</button>
+      <button id="drop">⚡ Drop connection</button>
+      <button id="reconnect">🔌 Reconnect</button>
+    </div>
+
+    <ul id="feed"></ul>
+
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script>
+      const API_ORIGIN = location.origin;
+
+      // Live Server serves this file on :5500; Nest handles Socket.IO/API on :3000.
+      const socket = io(API_ORIGIN, {
+        transports: ['websocket'], // skip polling -> no sticky-session requirement
+        reconnection: false, // we reconnect manually, with the button
+      });
+
+      const feed = document.getElementById('feed');
+      const statusEl = document.getElementById('status');
+
+      // Add a list item and return it (newest on top).
+      function row(cls) {
+        const li = document.createElement('li');
+        if (cls) li.className = cls;
+        feed.prepend(li);
+        return li;
+      }
+      const system = (text) => (row('system').textContent = text);
+
+      function setStatus(online) {
+        statusEl.textContent = online ? 'online' : 'offline';
+        statusEl.className = online ? 'online' : 'offline';
+      }
+      socket.on('connect', () => setStatus(true));
+      socket.on('disconnect', () => setStatus(false));
+
+      // A notification arrived. socket.recovered is true while a recovered
+      // session is replaying the messages it missed while offline.
+      console.log('Hello');
+      socket.on('notification', (n) => {
+        console.log('Notif', n);
+        const replayed = socket.recovered;
+        const li = row(replayed ? 'replayed' : '');
+        const title = document.createElement('b');
+        title.textContent = n.title;
+        const tag = document.createElement('small');
+        tag.textContent = replayed ? '  🔁 REPLAYED' : ' ';
+        li.append(title, tag);
+      });
+
+      // Send -> hits THIS instance, which broadcasts to every instance via the stream.
+      document.getElementById('send').onclick = () =>
+        fetch(`${API_ORIGIN}/notifications/notify`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            title: document.getElementById('title').value,
+          }),
+        });
+
+      // Drop -> abruptly close the transport. We do NOT auto-reconnect.
+      document.getElementById('drop').onclick = () => {
+        socket.io.engine.close();
+        system('⚡ dropped — staying offline until you click Reconnect');
+      };
+
+      // Reconnect -> manual. The server recovers the session and replays the gap.
+      document.getElementById('reconnect').onclick = () => socket.connect();
+    </script>
+  </body>
+</html>
