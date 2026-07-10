@@ -1,5 +1,5 @@
 import Redis from 'ioredis';
 
-const url = 'redis://localhost:6380';
+export const redisUrl = 'redis://default:KKKemot7901$@192.168.1.110:6379/1';
 
-export const redis = new Redis(url, { lazyConnect: false });
+export const redis = new Redis(redisUrl, { lazyConnect: false });
